@@ -20,8 +20,6 @@ const inputs = {
   sheetWidthMM: document.getElementById("sheetWidthMM"),
   sheetHeightMM: document.getElementById("sheetHeightMM"),
   coverSheet: document.getElementById("coverSheet"),
-  coverFront: document.getElementById("coverFront"),
-  coverBack: document.getElementById("coverBack"),
   paperTexture: document.getElementById("paperTexture"),
   surfCoverRoughness: document.getElementById("surfCoverRoughness"),
   surfCoverClearcoat: document.getElementById("surfCoverClearcoat"),
@@ -59,8 +57,6 @@ const cameraButtons = [...document.querySelectorAll("button[data-view]")];
 const runtimeState = {
   textures: {
     coverSheet: null,
-    coverFront: null,
-    coverBack: null,
     paperTexture: null,
   },
   currentView: "marketing",
@@ -171,7 +167,7 @@ function initialize() {
   });
   syncSurfaceRangeLabels();
 
-  [inputs.coverSheet, inputs.coverFront, inputs.coverBack, inputs.paperTexture].forEach((input) => {
+  [inputs.coverSheet, inputs.paperTexture].forEach((input) => {
     input.addEventListener("change", applyChanges);
   });
 
@@ -189,21 +185,43 @@ function initialize() {
     viewer.fitCurrentView();
   });
   setStatus("Viewer bereit.");
+  startViewStateLoop();
+}
+
+function startViewStateLoop() {
+  let lastYaw = null;
+  let lastPitch = null;
+  let lastZoom = null;
+  function tick() {
+    if (viewer) {
+      const vs = viewer.getViewState();
+      if (vs.yawRad !== lastYaw || vs.pitchRad !== lastPitch || vs.zoomScale !== lastZoom) {
+        lastYaw = vs.yawRad;
+        lastPitch = vs.pitchRad;
+        lastZoom = vs.zoomScale;
+        const params = readNumericParams();
+        const derived = deriveBookAndSheetValues(params);
+        renderDebugValues(params, derived, runtimeState.textures.coverSheet);
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 }
 
 async function applyChanges() {
   try {
     setStatus("Lade Texturen ...");
     runtimeState.textures.coverSheet = await loadTextureFromFile(inputs.coverSheet.files[0] ?? null);
-    runtimeState.textures.coverFront = await loadTextureFromFile(inputs.coverFront.files[0] ?? null);
-    runtimeState.textures.coverBack = await loadTextureFromFile(inputs.coverBack.files[0] ?? null);
     runtimeState.textures.paperTexture = await loadTextureFromFile(inputs.paperTexture.files[0] ?? null);
     applyBookUpdate();
     const params = readNumericParams();
     const derived = deriveBookAndSheetValues(params);
     const sheetWarning = getSheetMappingWarning(params, derived, runtimeState.textures.coverSheet);
-    setStatus(sheetWarning ?? (runtimeState.textures.coverSheet
-      ? "Mockup aktualisiert (Druckbogen-Modus)."
+    const sheet = runtimeState.textures.coverSheet;
+    const isSvg = inputs.coverSheet.files[0]?.name?.toLowerCase().endsWith(".svg");
+    setStatus(sheetWarning ?? (sheet
+      ? `Mockup aktualisiert (Druckbogen ${isSvg ? "SVG" : "PNG"}).`
       : "Mockup aktualisiert."));
   } catch (error) {
     setStatus(`Fehler beim Laden: ${error.message ?? error}`);
@@ -385,9 +403,22 @@ function renderDebugValues(params, derived, coverSheetTexture) {
   if (coverSheetTexture?.image) {
     lines.push(
       "",
-      `PNG: ${coverSheetTexture.image.width}x${coverSheetTexture.image.height} px`,
-      `PNG-Verhaeltnis: ${(coverSheetTexture.image.width / Math.max(1, coverSheetTexture.image.height)).toFixed(6)}`,
-      `Sheet-Verhaeltnis: ${(params.sheetWidthMM / Math.max(0.001, params.sheetHeightMM)).toFixed(6)}`,
+      `Textur: ${coverSheetTexture.image.width}x${coverSheetTexture.image.height} px`,
+      `Textur-Verhaeltnis: ${(coverSheetTexture.image.width / Math.max(1, coverSheetTexture.image.height)).toFixed(6)}`,
+      `Sheet-Verhaeltnis:  ${(params.sheetWidthMM / Math.max(0.001, params.sheetHeightMM)).toFixed(6)}`,
+    );
+  }
+
+  if (viewer) {
+    const vs = viewer.getViewState();
+    lines.push(
+      "",
+      "--- Ansicht (reproduzierbar) ---",
+      `Preset:     ${vs.preset}`,
+      `Yaw:        ${vs.yawRad} rad  (${vs.yawDeg}°)`,
+      `Pitch:      ${vs.pitchRad} rad  (${vs.pitchDeg}°)`,
+      `Zoom:       ${vs.zoomScale}`,
+      `Kamera:     X=${vs.camX}  Y=${vs.camY}  Z=${vs.camZ}`,
     );
   }
 

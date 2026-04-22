@@ -148,6 +148,23 @@ export class BookViewer {
     this.openAmount = THREE.MathUtils.clamp(amount, 0, 1);
   }
 
+  getViewState() {
+    const yawRad = this.objectRotation.yaw;
+    const pitchRad = this.objectRotation.pitch;
+    const pos = this.camera.position;
+    return {
+      preset: this.activePreset,
+      yawRad: parseFloat(yawRad.toFixed(4)),
+      pitchRad: parseFloat(pitchRad.toFixed(4)),
+      yawDeg: parseFloat(THREE.MathUtils.radToDeg(yawRad).toFixed(1)),
+      pitchDeg: parseFloat(THREE.MathUtils.radToDeg(pitchRad).toFixed(1)),
+      zoomScale: parseFloat(this.zoomScale.toFixed(3)),
+      camX: parseFloat(pos.x.toFixed(3)),
+      camY: parseFloat(pos.y.toFixed(3)),
+      camZ: parseFloat(pos.z.toFixed(3)),
+    };
+  }
+
   exportGLTF(filename = "hardcover-mockup.gltf") {
     if (!this.book) {
       return;

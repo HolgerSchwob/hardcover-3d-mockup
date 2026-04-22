@@ -185,8 +185,8 @@
     <fieldset>
       <legend>Cover-Druckbogen (vollflächig, zentriert)</legend>
       <label>
-        Druckbogen (PNG) — U4 | Rücken | U1, Mitte = Rückenmitte
-        <input id="coverSheet" type="file" accept=".png,image/png">
+        Druckbogen (PNG oder SVG) — U4 | Rücken | U1, Mitte = Rückenmitte
+        <input id="coverSheet" type="file" accept=".png,.svg,image/png,image/svg+xml">
       </label>
       <label>
         Bogenbreite (mm)
@@ -196,20 +196,8 @@
         Bogenhöhe (mm)
         <input id="sheetHeightMM" type="number" min="10" step="0.1" value="330">
       </label>
-    </fieldset>
-
-    <fieldset>
-      <legend>Einzelvorlagen (wenn kein Druckbogen geladen)</legend>
       <label>
-        coverFront (PNG)
-        <input id="coverFront" type="file" accept=".png,image/png">
-      </label>
-      <label>
-        coverBack (PNG)
-        <input id="coverBack" type="file" accept=".png,image/png">
-      </label>
-      <label>
-        paperTexture (optional)
+        Papiertextur (optional, PNG/JPG)
         <input id="paperTexture" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
       </label>
     </fieldset>

@@ -8,6 +8,10 @@ export async function loadTextureFromFile(file) {
     return null;
   }
 
+  if (file.type === "image/svg+xml" || file.name?.toLowerCase().endsWith(".svg")) {
+    return rasterizeSvgToTexture(file);
+  }
+
   const dataUrl = await readFileAsDataUrl(file);
   return new Promise((resolve, reject) => {
     textureLoader.load(
@@ -22,6 +26,63 @@ export async function loadTextureFromFile(file) {
       undefined,
       (error) => reject(error),
     );
+  });
+}
+
+async function rasterizeSvgToTexture(file) {
+  const svgText = await file.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgText, "image/svg+xml");
+  const svgEl = doc.documentElement;
+
+  let svgW = parseFloat(svgEl.getAttribute("width")) || 0;
+  let svgH = parseFloat(svgEl.getAttribute("height")) || 0;
+  if (!svgW || !svgH) {
+    const vb = svgEl.getAttribute("viewBox");
+    if (vb) {
+      const parts = vb.trim().split(/[\s,]+/);
+      if (parts.length >= 4) {
+        svgW = parseFloat(parts[2]) || 0;
+        svgH = parseFloat(parts[3]) || 0;
+      }
+    }
+  }
+  // Fallback auf typische Druckbogen-Auflösung (A4 quer @300 dpi)
+  if (!svgW || !svgH) {
+    svgW = 3508;
+    svgH = 2480;
+  }
+
+  const MAX_PX = 4096;
+  const scale = Math.min(1, MAX_PX / Math.max(svgW, svgH));
+  const canvasW = Math.max(1, Math.round(svgW * scale));
+  const canvasH = Math.max(1, Math.round(svgH * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = canvasW;
+  canvas.height = canvasH;
+  const ctx = canvas.getContext("2d");
+
+  const blob = new Blob([svgText], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, canvasW, canvasH);
+      URL.revokeObjectURL(url);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      texture.anisotropy = 8;
+      resolve(texture);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("SVG konnte nicht geladen werden"));
+    };
+    img.src = url;
   });
 }
 
