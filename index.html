@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hardcover 3D Mockup MVP</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(300px, 360px) 1fr;
+      background: #ffffff;
+      color: #1a1f28;
+      overflow: hidden;
+    }
+
+    #ui {
+      padding: 16px;
+      border-right: 1px solid #d8dde8;
+      background: #f7f8fb;
+      overflow: auto;
+    }
+
+    #ui h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    fieldset {
+      border: 1px solid #c9d0e0;
+      margin: 0 0 14px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 6px;
+    }
+
+    legend {
+      font-size: 13px;
+      color: #3d4659;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      margin-top: 6px;
+      box-sizing: border-box;
+    }
+
+    .range-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .range-row input[type="range"] {
+      flex: 1;
+      margin-top: 0;
+    }
+
+    .range-val {
+      min-width: 2.5rem;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: #4a5568;
+    }
+
+    input[type="number"],
+    input[type="file"] {
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 4px;
+      padding: 7px;
+      border: 1px solid #b8c0d4;
+      background: #fff;
+      color: #1a1f28;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 8px 10px;
+      border: 1px solid #4a6ccf;
+      background: #2e4fa8;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button[data-view] {
+      border-color: #9aa3b8;
+      background: #eef1f7;
+      color: #1a1f28;
+    }
+
+    #viewer {
+      position: relative;
+      height: 100vh;
+      overflow: hidden;
+      background:
+        radial-gradient(120% 95% at 52% 35%, #f8fbff 0%, #edf2f8 52%, #e0e7f1 100%);
+    }
+
+    #viewer canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #viewer::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at 52% 40%, rgba(255, 255, 255, 0) 48%, rgba(12, 18, 32, 0.08) 100%);
+    }
+
+    #status {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #4a5568;
+      min-height: 18px;
+    }
+
+    #calcDebug {
+      margin-top: 10px;
+      border: 1px solid #c9d0e0;
+      background: #fff;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #2d3340;
+      white-space: pre-wrap;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <aside id="ui">
+    <h2>Hardcover 3D Mockup</h2>
+
+    <fieldset>
+      <legend>Maße (mm)</legend>
+      <label>
+        Buchblockhöhe
+        <input id="bookHeightMM" type="number" min="50" step="0.1" value="297">
+      </label>
+      <label>
+        Buchblockbreite
+        <input id="bookWidthMM" type="number" min="50" step="0.1" value="210">
+      </label>
+      <label>
+        Blockdicke
+        <input id="blockThicknessMM" type="number" min="1" step="0.1" value="10">
+      </label>
+      <label>
+        Überstand
+        <input id="overhangMM" type="number" min="0" step="0.1" value="2.5">
+      </label>
+      <label>
+        Pappendicke
+        <input id="boardThicknessMM" type="number" min="0.5" step="0.1" value="2">
+      </label>
+      <label>
+        Rückeneinlagedicke
+        <input id="spineInsertThicknessMM" type="number" min="0" step="0.1" value="1">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Cover-Druckbogen (vollflächig, zentriert)</legend>
+      <label>
+        Druckbogen (PNG) — U4 | Rücken | U1, Mitte = Rückenmitte
+        <input id="coverSheet" type="file" accept=".png,image/png">
+      </label>
+      <label>
+        Bogenbreite (mm)
+        <input id="sheetWidthMM" type="number" min="10" step="0.1" value="488">
+      </label>
+      <label>
+        Bogenhöhe (mm)
+        <input id="sheetHeightMM" type="number" min="10" step="0.1" value="330">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Einzelvorlagen (wenn kein Druckbogen geladen)</legend>
+      <label>
+        coverFront (PNG)
+        <input id="coverFront" type="file" accept=".png,image/png">
+      </label>
+      <label>
+        coverBack (PNG)
+        <input id="coverBack" type="file" accept=".png,image/png">
+      </label>
+      <label>
+        paperTexture (optional)
+        <input id="paperTexture" type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg">
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Buchfalz (mm)</legend>
+      <label>
+        Falz-Offset ab linkem Buchblockrand
+        <input id="falzOffsetFromBlockLeftMM" type="number" min="0" step="0.1" value="8">
+      </label>
+      <label>
+        Falzbreite
+        <input id="falzWidthMM" type="number" min="0.5" step="0.1" value="6">
+      </label>
+      <label>
+        Falztiefe
+        <input id="falzDepthMM" type="number" min="0.1" step="0.1" value="1.7">
+      </label>
+      <label>
+        Falzradius
+        <input id="falzRadiusMM" type="number" min="0.1" step="0.1" value="1.2">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Oberflächenmaterial</legend>
+      <label>
+        Cover Rauheit (Roughness)
+        <span class="range-row">
+          <input id="surfCoverRoughness" type="range" min="0" max="1" step="0.01" value="0.68">
+          <span class="range-val" data-for="surfCoverRoughness">0.68</span>
+        </span>
+      </label>
+      <label>
+        Cover Glanzschicht (Clearcoat)
+        <span class="range-row">
+          <input id="surfCoverClearcoat" type="range" min="0" max="1" step="0.01" value="0.28">
+          <span class="range-val" data-for="surfCoverClearcoat">0.28</span>
+        </span>
+      </label>
+      <label>
+        Clearcoat-Rauheit
+        <span class="range-row">
+          <input id="surfCoverClearcoatRoughness" type="range" min="0" max="1" step="0.01" value="0.34">
+          <span class="range-val" data-for="surfCoverClearcoatRoughness">0.34</span>
+        </span>
+      </label>
+      <label>
+        Umgebungsreflexion (Env)
+        <span class="range-row">
+          <input id="surfCoverEnvMapIntensity" type="range" min="0" max="1.5" step="0.01" value="0.55">
+          <span class="range-val" data-for="surfCoverEnvMapIntensity">0.55</span>
+        </span>
+      </label>
+      <label>
+        Metall (Metalness)
+        <span class="range-row">
+          <input id="surfCoverMetalness" type="range" min="0" max="1" step="0.01" value="0.03">
+          <span class="range-val" data-for="surfCoverMetalness">0.03</span>
+        </span>
+      </label>
+      <label>
+        Innenfläche Rauheit
+        <span class="range-row">
+          <input id="surfInnerRoughness" type="range" min="0" max="1" step="0.01" value="0.88">
+          <span class="range-val" data-for="surfInnerRoughness">0.88</span>
+        </span>
+      </label>
+      <label>
+        Innen Metall / Env
+        <span class="range-row">
+          <input id="surfInnerMetalness" type="range" min="0" max="1" step="0.01" value="0.02">
+          <span class="range-val" data-for="surfInnerMetalness">0.02</span>
+        </span>
+      </label>
+      <label>
+        Innen Umgebungsreflexion
+        <span class="range-row">
+          <input id="surfInnerEnvMapIntensity" type="range" min="0" max="1.5" step="0.01" value="0.32">
+          <span class="range-val" data-for="surfInnerEnvMapIntensity">0.32</span>
+        </span>
+      </label>
+      <label>
+        Seitenlinien-Intensität
+        <span class="range-row">
+          <input id="surfPaperEdgeLineStrength" type="range" min="0" max="1" step="0.01" value="0.72">
+          <span class="range-val" data-for="surfPaperEdgeLineStrength">0.72</span>
+        </span>
+      </label>
+      <label>
+        Papierkorn-Stärke
+        <span class="range-row">
+          <input id="surfPaperEdgeGrainStrength" type="range" min="0" max="1" step="0.01" value="0.58">
+          <span class="range-val" data-for="surfPaperEdgeGrainStrength">0.58</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Beleuchtung / Spotlight</legend>
+      <label>
+        Exposure
+        <span class="range-row">
+          <input id="lightExposure" type="range" min="0.6" max="1.4" step="0.01" value="0.98">
+          <span class="range-val" data-for="lightExposure">0.98</span>
+        </span>
+      </label>
+      <label>
+        Umgebungslicht (Environment)
+        <span class="range-row">
+          <input id="lightEnvironmentIntensity" type="range" min="0" max="2" step="0.01" value="0.92">
+          <span class="range-val" data-for="lightEnvironmentIntensity">0.92</span>
+        </span>
+      </label>
+      <label>
+        Hemisphere-Intensität
+        <span class="range-row">
+          <input id="lightHemisphereIntensity" type="range" min="0" max="1.2" step="0.01" value="0.30">
+          <span class="range-val" data-for="lightHemisphereIntensity">0.30</span>
+        </span>
+      </label>
+      <label>
+        Key-Spotlight Intensität
+        <span class="range-row">
+          <input id="lightKeyIntensity" type="range" min="0" max="3" step="0.01" value="1.55">
+          <span class="range-val" data-for="lightKeyIntensity">1.55</span>
+        </span>
+      </label>
+      <label>
+        Key-Spotlight Winkel (Grad)
+        <span class="range-row">
+          <input id="lightKeyAngleDeg" type="range" min="10" max="65" step="1" value="30">
+          <span class="range-val" data-for="lightKeyAngleDeg">30</span>
+        </span>
+      </label>
+      <label>
+        Key-Spotlight Penumbra
+        <span class="range-row">
+          <input id="lightKeyPenumbra" type="range" min="0" max="1" step="0.01" value="0.72">
+          <span class="range-val" data-for="lightKeyPenumbra">0.72</span>
+        </span>
+      </label>
+      <label>
+        Fill-Intensität
+        <span class="range-row">
+          <input id="lightFillIntensity" type="range" min="0" max="1.5" step="0.01" value="0.28">
+          <span class="range-val" data-for="lightFillIntensity">0.28</span>
+        </span>
+      </label>
+      <label>
+        Rim-Spotlight Intensität
+        <span class="range-row">
+          <input id="lightRimIntensity" type="range" min="0" max="2" step="0.01" value="0.62">
+          <span class="range-val" data-for="lightRimIntensity">0.62</span>
+        </span>
+      </label>
+      <label>
+        Schattenstärke
+        <span class="range-row">
+          <input id="lightShadowOpacity" type="range" min="0" max="0.4" step="0.01" value="0.14">
+          <span class="range-val" data-for="lightShadowOpacity">0.14</span>
+        </span>
+      </label>
+      <label>
+        Bloom
+        <span class="range-row">
+          <input id="lightBloomStrength" type="range" min="0" max="0.2" step="0.005" value="0.035">
+          <span class="range-val" data-for="lightBloomStrength">0.035</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Maussteuerung</legend>
+      <label>
+        <input id="dragInvertX" type="checkbox" checked>
+        Links/Rechts invertieren
+      </label>
+      <label>
+        <input id="dragInvertY" type="checkbox" checked>
+        Oben/Unten invertieren
+      </label>
+    </fieldset>
+
+    <div class="actions">
+      <button id="apply">Aktualisieren</button>
+      <button id="exportGLTF">Export GLTF</button>
+    </div>
+    <div class="actions">
+      <button data-view="front">Front</button>
+      <button data-view="marketing">45°</button>
+      <button data-view="spine">Rücken</button>
+      <button data-view="open">Leicht geöffnet</button>
+    </div>
+    <div class="actions">
+      <button id="fitView">Zentrieren</button>
+      <button id="zoomIn">Zoom +</button>
+      <button id="zoomOut">Zoom -</button>
+    </div>
+
+    <div id="status"></div>
+    <pre id="calcDebug">Berechnungen werden geladen ...</pre>
+  </aside>
+
+  <main id="viewer"></main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

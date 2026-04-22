@@ -1,0 +1,12 @@
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.cursor/
+*.suo
+*.user
+.vs/
+
+# Node (falls später ein Build-Schritt kommt)
+node_modules/
