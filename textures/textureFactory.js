@@ -53,10 +53,12 @@ async function rasterizeSvgToTexture(file) {
     svgH = 2480;
   }
 
-  const MAX_PX = 4096;
-  const scale = Math.min(1, MAX_PX / Math.max(svgW, svgH));
-  const canvasW = Math.max(1, Math.round(svgW * scale));
-  const canvasH = Math.max(1, Math.round(svgH * scale));
+  // SVG-Einheiten (mm, pt, …) werden ignoriert – wir rendern immer auf
+  // eine feste Zielauflösung, damit das Seitenverhältnis stimmt.
+  const TARGET_LONG_EDGE = 4096;
+  const aspect = svgW / svgH;
+  const canvasW = aspect >= 1 ? TARGET_LONG_EDGE : Math.max(1, Math.round(TARGET_LONG_EDGE * aspect));
+  const canvasH = aspect >= 1 ? Math.max(1, Math.round(TARGET_LONG_EDGE / aspect)) : TARGET_LONG_EDGE;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasW;
