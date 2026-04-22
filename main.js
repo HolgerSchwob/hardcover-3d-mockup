@@ -51,6 +51,7 @@ const buttons = {
   fitView: document.getElementById("fitView"),
   zoomIn: document.getElementById("zoomIn"),
   zoomOut: document.getElementById("zoomOut"),
+  previewSheetPng: document.getElementById("previewSheetPng"),
 };
 
 const cameraButtons = [...document.querySelectorAll("button[data-view]")];
@@ -60,6 +61,11 @@ const runtimeState = {
     paperTexture: null,
   },
   currentView: "marketing",
+};
+const sheetPreview = {
+  panel: document.getElementById("sheetPreviewPanel"),
+  meta: document.getElementById("sheetPreviewMeta"),
+  image: document.getElementById("sheetPreviewImage"),
 };
 
 window.addEventListener("error", (event) => {
@@ -86,6 +92,7 @@ function initialize() {
   buttons.fitView.addEventListener("click", () => viewer.fitCurrentView());
   buttons.zoomIn.addEventListener("click", () => viewer.zoomBy(0.84));
   buttons.zoomOut.addEventListener("click", () => viewer.zoomBy(1.2));
+  buttons.previewSheetPng?.addEventListener("click", previewCoverSheetRaster);
   cameraButtons.forEach((button) => {
     button.addEventListener("click", () => {
       runtimeState.currentView = button.dataset.view;
@@ -225,6 +232,55 @@ async function applyChanges() {
       : "Mockup aktualisiert."));
   } catch (error) {
     setStatus(`Fehler beim Laden: ${error.message ?? error}`);
+  }
+}
+
+async function previewCoverSheetRaster() {
+  const file = inputs.coverSheet.files?.[0] ?? null;
+  if (!file) {
+    setStatus("Bitte zuerst einen Cover-Druckbogen (PNG oder SVG) auswaehlen.");
+    return;
+  }
+  try {
+    setStatus("Erzeuge PNG-Vorschau aus Cover-Druckbogen ...");
+    const texture = await loadTextureFromFile(file);
+    const preview = textureToPngPreview(texture);
+    if (!preview) {
+      setStatus("PNG-Vorschau konnte nicht erzeugt werden (ungueltiges Bild).");
+      return;
+    }
+    const infoLines = [
+      `Datei: ${file.name}`,
+      `Quelle: ${texture.userData?.sourceType === "svg" ? "SVG-Rasterisierung" : "Bitmap-Datei"}`,
+      `Raster: ${preview.width} x ${preview.height} px`,
+    ];
+    if (Number.isFinite(texture.userData?.svgWidth) && Number.isFinite(texture.userData?.svgHeight)) {
+      infoLines.push(`SVG-Masse: ${texture.userData.svgWidth} x ${texture.userData.svgHeight}`);
+    }
+    sheetPreview.meta.textContent = infoLines.join("\n");
+    sheetPreview.image.src = preview.dataUrl;
+    sheetPreview.image.style.display = "block";
+    if (sheetPreview.panel) {
+      sheetPreview.panel.open = true;
+    }
+    setStatus("PNG-Vorschau aktualisiert.");
+  } catch (error) {
+    const fallback = await createFileFallbackPreview(file);
+    if (fallback) {
+      sheetPreview.meta.textContent = [
+        `Datei: ${file.name}`,
+        "Quelle: Originaldatei (Fallback, Rasterisierung fehlgeschlagen)",
+        `Hinweis: ${error.message ?? error}`,
+      ].join("\n");
+      sheetPreview.image.src = fallback.dataUrl;
+      sheetPreview.image.style.display = "block";
+      if (sheetPreview.panel) {
+        sheetPreview.panel.open = true;
+      }
+      setStatus("PNG-Vorschau mit Dateifallback angezeigt (Rasterisierung fehlgeschlagen).");
+      return;
+    }
+    setStatus(`PNG-Vorschau fehlgeschlagen: ${error.message ?? error}`);
   }
 }
 
@@ -451,6 +507,61 @@ function clamp01(value) {
 
 function setStatus(message) {
   statusElement.textContent = message;
+}
+
+function textureToPngPreview(texture) {
+  const image = texture?.image;
+  if (!image) {
+    return null;
+  }
+  if (typeof HTMLCanvasElement !== "undefined" && image instanceof HTMLCanvasElement) {
+    return {
+      dataUrl: image.toDataURL("image/png"),
+      width: image.width,
+      height: image.height,
+    };
+  }
+  const width = image.width ?? image.videoWidth ?? 0;
+  const height = image.height ?? image.videoHeight ?? 0;
+  if (!(width > 0 && height > 0)) {
+    return null;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  return {
+    dataUrl: canvas.toDataURL("image/png"),
+    width,
+    height,
+  };
+}
+
+async function createFileFallbackPreview(file) {
+  if (!file) {
+    return null;
+  }
+  const isImageLike = file.type?.startsWith("image/") || /\.(png|jpe?g|svg)$/i.test(file.name ?? "");
+  if (!isImageLike) {
+    return null;
+  }
+  const dataUrl = await readFileAsDataUrl(file);
+  return { dataUrl };
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function getSheetMappingWarning(params, derived, coverSheetTexture) {

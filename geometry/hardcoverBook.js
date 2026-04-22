@@ -1037,14 +1037,15 @@ function faceMaterialsForBoard(outerSideSign, outerMaterial, innerMaterial, edge
  * @param {number} zLocalM z der Flaeche leicht zur Buchmitte versetzt (Front: negativ, Rueck: positiv)
  */
 function addTurnIns(parentBoard, outerWidthMM, outerHeightMM, bleedMM, zLocalM, turnInMats) {
-  const innerWidthMM = Math.max(outerWidthMM - bleedMM * 2, 1);
   const innerHeightMM = Math.max(outerHeightMM - bleedMM * 2, 1);
 
-  const top = createTurnInPlane(innerWidthMM, bleedMM, turnInMats.top);
+  // Top/Bottom laufen ueber die volle Deckelbreite, damit an den Ecken
+  // keine offenen Restflaechen (dunkle Dreiecke) sichtbar bleiben.
+  const top = createTurnInPlane(outerWidthMM, bleedMM, turnInMats.top);
   top.position.set(0, (outerHeightMM * 0.5 - bleedMM * 0.5) * MM_TO_M, zLocalM);
   parentBoard.add(top);
 
-  const bottom = createTurnInPlane(innerWidthMM, bleedMM, turnInMats.bottom);
+  const bottom = createTurnInPlane(outerWidthMM, bleedMM, turnInMats.bottom);
   bottom.position.set(0, -(outerHeightMM * 0.5 - bleedMM * 0.5) * MM_TO_M, zLocalM);
   parentBoard.add(bottom);
 

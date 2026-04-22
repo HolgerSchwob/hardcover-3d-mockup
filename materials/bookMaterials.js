@@ -179,20 +179,40 @@ export function createBookMaterials(textures, dims, surface) {
  * Einschlag-Streifen aus dem Druckbogen (mm-Rechteck) per map.offset/repeat.
  * Gleiche Logik wie die Kanten-Quads: angrenzend an Cover-Rechteck +/- bleed.
  */
-function createCroppedSheetMaterial(baseMap, matteSettings, x1mm, x2mm, y1mm, y2mm, sheetWmm, sheetHmm) {
+function createCroppedSheetMaterial(
+  baseMap,
+  matteSettings,
+  x1mm,
+  x2mm,
+  y1mm,
+  y2mm,
+  sheetWmm,
+  sheetHmm,
+  options = {},
+) {
   const W = Math.max(0.001, sheetWmm);
   const H = Math.max(0.001, sheetHmm);
   const map = baseMap.clone();
   map.wrapS = THREE.ClampToEdgeWrapping;
   map.wrapT = THREE.ClampToEdgeWrapping;
-  const u0 = THREE.MathUtils.clamp(x1mm / W, 0, 1);
-  const u1 = THREE.MathUtils.clamp(x2mm / W, 0, 1);
-  const v0 = THREE.MathUtils.clamp(y1mm / H, 0, 1);
-  const v1 = THREE.MathUtils.clamp(y2mm / H, 0, 1);
-  const du = Math.max(1e-6, u1 - u0);
-  const dv = Math.max(1e-6, v1 - v0);
+  const { flipU = false, flipV = false } = options;
+  const uLo = THREE.MathUtils.clamp(Math.min(x1mm, x2mm) / W, 0, 1);
+  const uHi = THREE.MathUtils.clamp(Math.max(x1mm, x2mm) / W, 0, 1);
+  const vLo = THREE.MathUtils.clamp(Math.min(y1mm, y2mm) / H, 0, 1);
+  const vHi = THREE.MathUtils.clamp(Math.max(y1mm, y2mm) / H, 0, 1);
+  const signedSpan = (start, end, flipped) => {
+    const span = flipped ? start - end : end - start;
+    if (Math.abs(span) >= 1e-6) {
+      return span;
+    }
+    return flipped ? -1e-6 : 1e-6;
+  };
+  const uStart = flipU ? uHi : uLo;
+  const vStart = flipV ? vHi : vLo;
+  const du = signedSpan(uLo, uHi, flipU);
+  const dv = signedSpan(vLo, vHi, flipV);
   map.repeat.set(du, dv);
-  map.offset.set(u0, v0);
+  map.offset.set(uStart, vStart);
   map.needsUpdate = true;
   return new THREE.MeshPhysicalMaterial({
     ...laminateBase,
@@ -217,34 +237,23 @@ function createTurnInSetFromSheet(coverSheetMap, layout, side, matteSettings, ne
   const b2 = layout.backX2MM;
   const y1 = layout.y1MM;
   const y2 = layout.y2MM;
-  // Innenmass der Einschlaege (wie addTurnIns): Geometrie ist um je b schmaler/hoeher
-  // als das volle Cover-Rechteck. Die Textur muss denselben **mm/mm**-Ausschnitt nutzen,
-  // sonst wird y1..y2 auf kuerzere Kanten gestaucht → sichtbarer Versatz zu Deckel/Spine.
+  // Linke/rechte Einschlaege laufen nur ueber die innere Hoehe (y1+b..y2-b),
+  // waehrend oben/unten die volle Deckelbreite nutzen.
   let yi1 = y1 + b;
   let yi2 = y2 - b;
   if (!(yi2 > yi1)) {
     yi1 = y1;
     yi2 = y2;
   }
-  let innerUFront1 = f1 + b;
-  let innerUFront2 = f2 - b;
-  if (!(innerUFront2 > innerUFront1)) {
-    innerUFront1 = f1;
-    innerUFront2 = f2;
-  }
-  let innerUBack1 = b1 + b;
-  let innerUBack2 = b2 - b;
-  if (!(innerUBack2 > innerUBack1)) {
-    innerUBack1 = b1;
-    innerUBack2 = b2;
-  }
 
   if (side === "front") {
     return {
-      top: createCroppedSheetMaterial(coverSheetMap, matteSettings, innerUFront1, innerUFront2, y2, y2 + b, W, H),
-      right: createCroppedSheetMaterial(coverSheetMap, matteSettings, f2, f2 + b, yi1, yi2, W, H),
-      bottom: createCroppedSheetMaterial(coverSheetMap, matteSettings, innerUFront1, innerUFront2, y1 - b, y1, W, H),
-      left: createCroppedSheetMaterial(coverSheetMap, matteSettings, f1 - b, f1, yi1, yi2, W, H),
+      // Beim Umklappen auf die Innenseite muss die Achse senkrecht zur
+      // Deckelkante gespiegelt werden, sonst landet U1/U4-Kante innen.
+      top: createCroppedSheetMaterial(coverSheetMap, matteSettings, f1, f2, y2, y2 + b, W, H, { flipU: true, flipV: true }),
+      right: createCroppedSheetMaterial(coverSheetMap, matteSettings, f2, f2 + b, yi1, yi2, W, H, { flipU: true }),
+      bottom: createCroppedSheetMaterial(coverSheetMap, matteSettings, f1, f2, y1 - b, y1, W, H, { flipU: true, flipV: true }),
+      left: createCroppedSheetMaterial(coverSheetMap, matteSettings, f1 - b, f1, yi1, yi2, W, H, { flipU: true }),
     };
   }
 
@@ -252,10 +261,10 @@ function createTurnInSetFromSheet(coverSheetMap, layout, side, matteSettings, ne
   // am **inneren** Rand des Cover-Rechtecks liegen: [b2-b, b2] — NICHT [b2, b2+b],
   // das faellt in den Spine-Ausschnitt des PNG.
   return {
-    top: createCroppedSheetMaterial(coverSheetMap, matteSettings, innerUBack1, innerUBack2, y2, y2 + b, W, H),
-    right: createCroppedSheetMaterial(coverSheetMap, matteSettings, b2 - b, b2, yi1, yi2, W, H),
-    bottom: createCroppedSheetMaterial(coverSheetMap, matteSettings, innerUBack1, innerUBack2, y1 - b, y1, W, H),
-    left: createCroppedSheetMaterial(coverSheetMap, matteSettings, b1 - b, b1, yi1, yi2, W, H),
+    top: createCroppedSheetMaterial(coverSheetMap, matteSettings, b1, b2, y2, y2 + b, W, H, { flipU: true, flipV: true }),
+    right: createCroppedSheetMaterial(coverSheetMap, matteSettings, b2 - b, b2, yi1, yi2, W, H, { flipU: true }),
+    bottom: createCroppedSheetMaterial(coverSheetMap, matteSettings, b1, b2, y1 - b, y1, W, H, { flipU: true, flipV: true }),
+    left: createCroppedSheetMaterial(coverSheetMap, matteSettings, b1 - b, b1, yi1, yi2, W, H, { flipU: true }),
   };
 }
 

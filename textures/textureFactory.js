@@ -9,7 +9,13 @@ export async function loadTextureFromFile(file) {
   }
 
   if (file.type === "image/svg+xml" || file.name?.toLowerCase().endsWith(".svg")) {
-    return rasterizeSvgToTexture(file);
+    const texture = await rasterizeSvgToTexture(file);
+    texture.userData = {
+      ...(texture.userData ?? {}),
+      sourceType: "svg",
+      fileName: file.name ?? "",
+    };
+    return texture;
   }
 
   const dataUrl = await readFileAsDataUrl(file);
@@ -21,6 +27,13 @@ export async function loadTextureFromFile(file) {
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
         texture.anisotropy = 8;
+        texture.userData = {
+          ...(texture.userData ?? {}),
+          sourceType: "bitmap",
+          fileName: file.name ?? "",
+          rasterWidth: texture.image?.width ?? null,
+          rasterHeight: texture.image?.height ?? null,
+        };
         resolve(texture);
       },
       undefined,
@@ -34,18 +47,16 @@ async function rasterizeSvgToTexture(file) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgText, "image/svg+xml");
   const svgEl = doc.documentElement;
+  const hasParserError = !!doc.querySelector("parsererror");
 
-  let svgW = parseFloat(svgEl.getAttribute("width")) || 0;
-  let svgH = parseFloat(svgEl.getAttribute("height")) || 0;
-  if (!svgW || !svgH) {
-    const vb = svgEl.getAttribute("viewBox");
-    if (vb) {
-      const parts = vb.trim().split(/[\s,]+/);
-      if (parts.length >= 4) {
-        svgW = parseFloat(parts[2]) || 0;
-        svgH = parseFloat(parts[3]) || 0;
-      }
-    }
+  let svgW = 0;
+  let svgH = 0;
+  let svgMarkup = svgText;
+  if (!hasParserError && svgEl?.tagName?.toLowerCase() === "svg") {
+    const dims = resolveSvgDimensions(svgEl);
+    svgW = dims.width;
+    svgH = dims.height;
+    svgMarkup = buildSanitizedSvgMarkup(svgEl, svgW, svgH);
   }
   // Fallback auf typische Druckbogen-Auflösung (A4 quer @300 dpi)
   if (!svgW || !svgH) {
@@ -64,26 +75,119 @@ async function rasterizeSvgToTexture(file) {
   canvas.width = canvasW;
   canvas.height = canvasH;
   const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("2D-Kontext fuer SVG-Rasterisierung nicht verfuegbar");
+  }
 
-  const blob = new Blob([svgText], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
+  const { image, transport } = await loadSvgImage(svgMarkup, svgText);
 
+  // SVG ohne vollflaechigen Hintergrund liefert transparente Randpixel.
+  // Diese werden auf opaken Materialien oft als dunkler Saum sichtbar.
+  // Daher beim Rasterisieren explizit Weiss hinterlegen.
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+  ctx.drawImage(image, 0, 0, canvasW, canvasH);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.anisotropy = 8;
+  texture.userData = {
+    ...(texture.userData ?? {}),
+    sourceType: "svg",
+    svgWidth: svgW,
+    svgHeight: svgH,
+    rasterWidth: canvasW,
+    rasterHeight: canvasH,
+    svgParseHadError: hasParserError,
+    svgImageTransport: transport,
+  };
+  return texture;
+}
+
+function resolveSvgDimensions(svgEl) {
+  let width = parseSvgLength(svgEl.getAttribute("width"));
+  let height = parseSvgLength(svgEl.getAttribute("height"));
+  if (!width || !height) {
+    const vb = svgEl.getAttribute("viewBox");
+    if (vb) {
+      const parts = vb.trim().split(/[\s,]+/);
+      if (parts.length >= 4) {
+        const vbW = Number.parseFloat(parts[2]);
+        const vbH = Number.parseFloat(parts[3]);
+        width = width || (Number.isFinite(vbW) && vbW > 0 ? vbW : 0);
+        height = height || (Number.isFinite(vbH) && vbH > 0 ? vbH : 0);
+      }
+    }
+  }
+  return { width, height };
+}
+
+function parseSvgLength(raw) {
+  if (!raw) {
+    return 0;
+  }
+  const numeric = Number.parseFloat(String(raw).replace(",", "."));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function buildSanitizedSvgMarkup(svgEl, width, height) {
+  const clone = svgEl.cloneNode(true);
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  if (!clone.getAttribute("viewBox")) {
+    clone.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  }
+  clone.setAttribute("width", String(width));
+  clone.setAttribute("height", String(height));
+  const serializer = new XMLSerializer();
+  return serializer.serializeToString(clone);
+}
+
+async function loadSvgImage(sanitizedMarkup, originalMarkup) {
+  const tried = [];
+  const fromDataUrl = async (markup) => {
+    const encoded = encodeURIComponent(markup);
+    const url = `data:image/svg+xml;charset=utf-8,${encoded}`;
+    tried.push("data-url");
+    return loadImage(url);
+  };
+  const fromBlob = async (markup) => {
+    const blob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    tried.push("blob-url");
+    try {
+      return await loadImage(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  try {
+    const image = await fromDataUrl(sanitizedMarkup);
+    return { image, transport: "data-url" };
+  } catch (errorData) {
+    try {
+      const image = await fromBlob(sanitizedMarkup);
+      return { image, transport: "blob-url" };
+    } catch (errorBlobSanitized) {
+      try {
+        const image = await fromBlob(originalMarkup);
+        return { image, transport: "blob-url-original" };
+      } catch (errorOriginal) {
+        const detail = [errorData, errorBlobSanitized, errorOriginal]
+          .map((err) => err?.message ?? String(err))
+          .join(" | ");
+        throw new Error(`SVG konnte nicht gerastert werden (${tried.join(", ")}): ${detail}`);
+      }
+    }
+  }
+}
+
+function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvasW, canvasH);
-      URL.revokeObjectURL(url);
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.wrapS = THREE.ClampToEdgeWrapping;
-      texture.wrapT = THREE.ClampToEdgeWrapping;
-      texture.anisotropy = 8;
-      resolve(texture);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("SVG konnte nicht geladen werden"));
-    };
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Bilddekodierung fehlgeschlagen"));
     img.src = url;
   });
 }
